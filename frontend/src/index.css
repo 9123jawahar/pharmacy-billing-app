@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Corporate medical palette — slate neutrals + medical blue primary + emerald accents */
+    --background: 210 20% 98%;
+    --foreground: 215 28% 17%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+
+    --primary: 210 89% 38%; /* medical blue */
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 215 28% 17%;
+
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 152 60% 94%;
+    --accent-foreground: 152 76% 20%;
+
+    --success: 152 69% 31%; /* emerald */
+    --success-foreground: 152 76% 97%;
+
+    --warning: 38 92% 40%;
+    --warning-foreground: 48 96% 97%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 210 89% 38%;
+
+    --radius: 0.625rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer utilities {
+  .no-print {
+    @media print {
+      display: none !important;
+    }
+  }
+  .print-only {
+    display: none;
+  }
+  @media print {
+    .print-only {
+      display: block;
+    }
+  }
+}
