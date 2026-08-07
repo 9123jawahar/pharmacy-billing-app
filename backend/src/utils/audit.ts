@@ -1,6 +1,6 @@
 import type { Request } from "express";
 import { prisma } from "@/lib/prisma";
-import type { AuditAction } from "@prisma/client";
+import type { AuditAction, Prisma } from "@prisma/client";
 
 interface AuditParams {
   req: Request;
@@ -25,7 +25,7 @@ export async function recordAudit({ req, action, entity, entityId, description, 
         entity,
         entityId,
         description,
-        metadata,
+        metadata: metadata as Prisma.InputJsonValue | undefined,
         ipAddress: req.ip,
       },
     });
