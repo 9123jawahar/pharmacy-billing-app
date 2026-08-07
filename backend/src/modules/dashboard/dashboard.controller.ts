@@ -32,7 +32,12 @@ export const getSummary = asyncHandler(async (_req: Request, res: Response) => {
     prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*) as count FROM drugs WHERE "isActive" = true AND "stockQuantity" <= "reorderLevel"`,
     prisma.drug.count({ where: { isActive: true, expiryDate: { lt: new Date() } } }),
     prisma.drug.count({ where: { isActive: true, expiryDate: { gte: new Date(), lt: soonCutoff } } }),
-    prisma.subscription.count({ where: { status: "ACTIVE", nextDueDate: { lte: soonCutoff } } }),
+    prisma.subscription.findMany({
+      where: { status: "ACTIVE", nextDueDate: { lte: soonCutoff } },
+      include: { customer: { select: { name: true } }, drug: { select: { name: true } } },
+      orderBy: { nextDueDate: "asc" },
+      take: 8,
+    }),
     prisma.order.findMany({
       where: { status: "FINALIZED" },
       orderBy: { createdAt: "desc" },
