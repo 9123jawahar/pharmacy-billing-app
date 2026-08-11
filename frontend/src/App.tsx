@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth-context";
+import { BillingDraftsProvider } from "@/lib/billing-drafts-context";
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Toaster } from "@/components/ui/toaster";
@@ -21,31 +22,33 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
+        <BillingDraftsProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
 
-          <Route element={<ProtectedRoute />}>
-            <Route path="/invoices/:id" element={<InvoicePage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/invoices/:id" element={<InvoicePage />} />
 
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/billing" element={<BillingPage />} />
-              <Route path="/inventory" element={<InventoryPage />} />
-              <Route path="/customers" element={<CustomersPage />} />
-              <Route path="/customers/:id" element={<CustomerDetailPage />} />
-              <Route path="/doctors" element={<DoctorsPage />} />
-              <Route path="/orders" element={<OrdersPage />} />
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<DashboardPage />} />
+                <Route path="/billing" element={<BillingPage />} />
+                <Route path="/inventory" element={<InventoryPage />} />
+                <Route path="/customers" element={<CustomersPage />} />
+                <Route path="/customers/:id" element={<CustomerDetailPage />} />
+                <Route path="/doctors" element={<DoctorsPage />} />
+                <Route path="/orders" element={<OrdersPage />} />
 
-              <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
-                <Route path="/audit-logs" element={<AuditLogPage />} />
-                <Route path="/users" element={<UsersPage />} />
+                <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
+                  <Route path="/audit-logs" element={<AuditLogPage />} />
+                  <Route path="/users" element={<UsersPage />} />
+                </Route>
               </Route>
             </Route>
-          </Route>
 
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-        <Toaster />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+          <Toaster />
+        </BillingDraftsProvider>
       </AuthProvider>
     </BrowserRouter>
   );

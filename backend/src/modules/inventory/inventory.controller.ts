@@ -44,7 +44,7 @@ export const listDrugs = asyncHandler(async (req: Request, res: Response) => {
  */
 export const smartSearch = asyncHandler(async (req: Request, res: Response) => {
   const q = String(req.query.q ?? "").trim();
-  if (q.length < 2) return ok(res, []);
+  if (q.length < 1) return ok(res, []);
 
   const drugs = await prisma.drug.findMany({
     where: {

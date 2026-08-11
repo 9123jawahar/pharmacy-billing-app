@@ -36,7 +36,7 @@ export default function InventoryPage() {
   const listQuery = useQuery({
     queryKey: ["drugs", tab, search],
     queryFn: async () => {
-      if (search.trim().length >= 2) {
+      if (search.trim().length >= 1) {
         return (await api.get<{ data: Drug[] }>("/inventory/search", { params: { q: search } })).data.data;
       }
       if (tab === "low-stock") return (await api.get<{ data: Drug[] }>("/inventory/alerts/low-stock")).data.data;

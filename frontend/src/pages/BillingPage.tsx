@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Trash2, Plus, Minus, ShoppingCart, Loader2, Tag, Award, AlertTriangle } from "lucide-react";
+import { Search, Trash2, Plus, Minus, ShoppingCart, Loader2, Tag, Award, AlertTriangle, X, ReceiptText } from "lucide-react";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatCurrency, cn } from "@/lib/utils";
 import type { Customer, Doctor, Drug } from "@/types";
+import { useBillingDrafts } from "@/lib/billing-drafts-context";
+import { useListKeyNav } from "@/lib/use-list-keynav";
 import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,11 +19,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/EmptyState";
 
-interface CartLine {
-  drug: Drug;
-  quantity: number;
-}
-
 const paymentMethods = [
   { value: "CASH", label: "Cash" },
   { value: "CARD", label: "Card" },
@@ -32,27 +29,23 @@ const paymentMethods = [
 
 export default function BillingPage() {
   const navigate = useNavigate();
+  const { bills, activeBillId, activeBill, setActiveBillId, addBill, closeBill, updateActiveBill } = useBillingDrafts();
+  const { cart, customer, doctorId, couponCode, couponResult, loyaltyPoints, paymentMethod } = activeBill;
+
   const [drugQuery, setDrugQuery] = useState("");
-  const [cart, setCart] = useState<CartLine[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [doctorId, setDoctorId] = useState<string>("");
-  const [couponCode, setCouponCode] = useState("");
-  const [couponResult, setCouponResult] = useState<{ discount: number } | null>(null);
-  const [loyaltyPoints, setLoyaltyPoints] = useState("0");
-  const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [submitting, setSubmitting] = useState(false);
 
   const { data: drugResults = [] } = useQuery({
     queryKey: ["billing-drug-search", drugQuery],
     queryFn: async () => (await api.get<{ data: Drug[] }>("/inventory/search", { params: { q: drugQuery } })).data.data,
-    enabled: drugQuery.trim().length >= 2,
+    enabled: drugQuery.trim().length >= 1,
   });
 
   const { data: customerResults = [] } = useQuery({
     queryKey: ["billing-customer-search", customerSearch],
     queryFn: async () => (await api.get<{ data: Customer[] }>("/customers", { params: { search: customerSearch, pageSize: 8 } })).data.data,
-    enabled: customerSearch.trim().length >= 2 && !customer,
+    enabled: customerSearch.trim().length >= 1 && !customer,
   });
 
   const { data: doctors = [] } = useQuery({
@@ -79,44 +72,48 @@ export default function BillingPage() {
   }, [cart, couponResult, loyaltyPoints]);
 
   function addToCart(drug: Drug) {
-    setCart((prev) => {
-      const existing = prev.find((l) => l.drug.id === drug.id);
-      if (existing) {
-        if (existing.quantity >= drug.stockQuantity) {
-          toast({ title: "Stock limit reached", description: `Only ${drug.stockQuantity} units of ${drug.name} available.`, variant: "destructive" });
-          return prev;
-        }
-        return prev.map((l) => (l.drug.id === drug.id ? { ...l, quantity: l.quantity + 1 } : l));
+    const existing = cart.find((l) => l.drug.id === drug.id);
+    if (existing) {
+      if (existing.quantity >= drug.stockQuantity) {
+        toast({ title: "Stock limit reached", description: `Only ${drug.stockQuantity} units of ${drug.name} available.`, variant: "destructive" });
+      } else {
+        updateActiveBill({ cart: cart.map((l) => (l.drug.id === drug.id ? { ...l, quantity: l.quantity + 1 } : l)) });
       }
-      return [...prev, { drug, quantity: 1 }];
-    });
+    } else {
+      updateActiveBill({ cart: [...cart, { drug, quantity: 1 }] });
+    }
     setDrugQuery("");
   }
 
   function updateQuantity(drugId: string, delta: number) {
-    setCart((prev) =>
-      prev
-        .map((l) => {
-          if (l.drug.id !== drugId) return l;
-          const next = l.quantity + delta;
-          if (next > l.drug.stockQuantity) {
-            toast({ title: "Stock limit reached", description: `Only ${l.drug.stockQuantity} units available.`, variant: "destructive" });
-            return l;
-          }
-          return { ...l, quantity: next };
-        })
-        .filter((l) => l.quantity > 0)
-    );
+    const next = cart
+      .map((l) => {
+        if (l.drug.id !== drugId) return l;
+        const nextQty = l.quantity + delta;
+        if (nextQty > l.drug.stockQuantity) {
+          toast({ title: "Stock limit reached", description: `Only ${l.drug.stockQuantity} units available.`, variant: "destructive" });
+          return l;
+        }
+        return { ...l, quantity: nextQty };
+      })
+      .filter((l) => l.quantity > 0);
+    updateActiveBill({ cart: next });
   }
+
+  const drugNav = useListKeyNav(drugResults, addToCart, (d) => d.stockQuantity === 0);
+  const customerNav = useListKeyNav(customerResults, (c) => {
+    updateActiveBill({ customer: c });
+    setCustomerSearch("");
+  });
 
   async function applyCoupon() {
     if (!couponCode.trim()) return;
     try {
       const res = await api.get("/loyalty/coupons/validate", { params: { code: couponCode, subtotal: totals.subtotal } });
-      setCouponResult({ discount: res.data.data.discount });
+      updateActiveBill({ couponResult: { discount: res.data.data.discount } });
       toast({ title: "Coupon applied", description: `Discount of ${formatCurrency(res.data.data.discount)}` });
     } catch (err) {
-      setCouponResult(null);
+      updateActiveBill({ couponResult: null });
       toast({ title: "Invalid coupon", description: getErrorMessage(err), variant: "destructive" });
     }
   }
@@ -144,12 +141,9 @@ export default function BillingPage() {
         variant: "success",
       });
 
-      setCart([]);
-      setCustomer(null);
-      setDoctorId("");
-      setCouponCode("");
-      setCouponResult(null);
-      setLoyaltyPoints("0");
+      // This bill is done — close its tab (a fresh empty one takes its place
+      // if it was the only one open) rather than leaving a finished bill sitting around.
+      closeBill(activeBillId);
       navigate(`/invoices/${order.id}`);
     } catch (err) {
       toast({ title: "Could not finalize order", description: getErrorMessage(err), variant: "destructive" });
@@ -162,6 +156,44 @@ export default function BillingPage() {
     <div className="space-y-6">
       <PageHeader title="Billing / Point of Sale" description="Search drugs, build the cart, and finalize the invoice." />
 
+      <div className="flex flex-wrap items-center gap-2">
+        {bills.map((b, i) => (
+          <button
+            key={b.id}
+            type="button"
+            onClick={() => setActiveBillId(b.id)}
+            className={cn(
+              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors",
+              b.id === activeBillId ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-secondary"
+            )}
+          >
+            <ReceiptText className="h-3.5 w-3.5" />
+            <span>{b.customer?.name ?? `Bill ${i + 1}`}</span>
+            {b.cart.length > 0 && (
+              <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
+                {b.cart.length}
+              </Badge>
+            )}
+            {bills.length > 1 && (
+              <span
+                role="button"
+                aria-label="Close bill"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeBill(b.id);
+                }}
+                className="-mr-1 rounded-full p-0.5 opacity-60 hover:bg-destructive/10 hover:text-destructive hover:opacity-100"
+              >
+                <X className="h-3 w-3" />
+              </span>
+            )}
+          </button>
+        ))}
+        <Button variant="outline" size="sm" onClick={addBill}>
+          <Plus className="h-3.5 w-3.5" /> New Bill
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card>
@@ -171,16 +203,25 @@ export default function BillingPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Input placeholder="Search by brand, generic name, or symptom…" value={drugQuery} onChange={(e) => setDrugQuery(e.target.value)} />
+              <Input
+                placeholder="Search by brand, generic name, or symptom…"
+                value={drugQuery}
+                onChange={(e) => setDrugQuery(e.target.value)}
+                onKeyDown={drugNav.handleKeyDown}
+              />
               {drugResults.length > 0 && (
                 <div className="mt-2 max-h-64 space-y-1 overflow-y-auto rounded-md border border-border p-1">
-                  {drugResults.map((drug) => (
+                  {drugResults.map((drug, i) => (
                     <button
                       key={drug.id}
                       type="button"
                       onClick={() => addToCart(drug)}
+                      onMouseEnter={() => drugNav.setActiveIndex(i)}
                       disabled={drug.stockQuantity === 0}
-                      className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-secondary disabled:opacity-40"
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-secondary disabled:opacity-40",
+                        i === drugNav.activeIndex && "bg-secondary"
+                      )}
                     >
                       <span>
                         <span className="font-medium">{drug.name}</span>{" "}
@@ -236,7 +277,7 @@ export default function BillingPage() {
                         <TableCell className="text-right">{formatCurrency(line.drug.sellingPrice)}</TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(Number(line.drug.sellingPrice) * line.quantity)}</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon" onClick={() => setCart((prev) => prev.filter((l) => l.drug.id !== line.drug.id))}>
+                          <Button variant="ghost" size="icon" onClick={() => updateActiveBill({ cart: cart.filter((l) => l.drug.id !== line.drug.id) })}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </TableCell>
@@ -273,24 +314,30 @@ export default function BillingPage() {
                       {customer.phone} · {customer.loyaltyPoints} pts
                     </p>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => setCustomer(null)}>
+                  <Button variant="ghost" size="sm" onClick={() => updateActiveBill({ customer: null })}>
                     Change
                   </Button>
                 </div>
               ) : (
                 <>
-                  <Input placeholder="Search by name or phone…" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
+                  <Input
+                    placeholder="Search by name or phone…"
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    onKeyDown={customerNav.handleKeyDown}
+                  />
                   {customerResults.length > 0 && (
                     <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border p-1">
-                      {customerResults.map((c) => (
+                      {customerResults.map((c, i) => (
                         <button
                           key={c.id}
                           type="button"
                           onClick={() => {
-                            setCustomer(c);
+                            updateActiveBill({ customer: c });
                             setCustomerSearch("");
                           }}
-                          className="block w-full rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-secondary"
+                          onMouseEnter={() => customerNav.setActiveIndex(i)}
+                          className={cn("block w-full rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-secondary", i === customerNav.activeIndex && "bg-secondary")}
                         >
                           {c.name} <span className="text-muted-foreground">— {c.phone}</span>
                         </button>
@@ -307,7 +354,7 @@ export default function BillingPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Referring Doctor (optional)</CardTitle>
             </CardHeader>
             <CardContent>
-              <Select value={doctorId} onValueChange={setDoctorId}>
+              <Select value={doctorId} onValueChange={(v) => updateActiveBill({ doctorId: v })}>
                 <SelectTrigger>
                   <SelectValue placeholder="None" />
                 </SelectTrigger>
@@ -328,7 +375,7 @@ export default function BillingPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex gap-2">
-                <Input placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} />
+                <Input placeholder="Coupon code" value={couponCode} onChange={(e) => updateActiveBill({ couponCode: e.target.value.toUpperCase() })} />
                 <Button variant="outline" onClick={applyCoupon}>
                   <Tag className="h-4 w-4" /> Apply
                 </Button>
@@ -343,7 +390,7 @@ export default function BillingPage() {
                     min={0}
                     max={customer.loyaltyPoints}
                     value={loyaltyPoints}
-                    onChange={(e) => setLoyaltyPoints(e.target.value)}
+                    onChange={(e) => updateActiveBill({ loyaltyPoints: e.target.value })}
                   />
                 </div>
               )}
@@ -355,7 +402,7 @@ export default function BillingPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Payment</CardTitle>
             </CardHeader>
             <CardContent>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <Select value={paymentMethod} onValueChange={(v) => updateActiveBill({ paymentMethod: v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
