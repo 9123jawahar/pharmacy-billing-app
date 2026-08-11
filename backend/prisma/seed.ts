@@ -25,6 +25,25 @@ function daysFromNow(days: number) {
 async function main() {
   console.log("🌱 Seeding database...");
 
+  // Only `User` is upserted by email below — every other model here uses a
+  // plain `.create()` with no natural unique key, so re-running this script
+  // against a database that's already been seeded would silently duplicate
+  // every doctor/drug/customer/etc. Clear out everything seed-managed first
+  // so `npm run seed` is safe to run more than once. Deletion order respects
+  // the schema's Restrict relations (Drug -> Supplier, OrderItem -> Drug).
+  await prisma.auditLog.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.loyaltyTransaction.deleteMany();
+  await prisma.orderItem.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.subscription.deleteMany();
+  await prisma.stockAdjustment.deleteMany();
+  await prisma.customer.deleteMany();
+  await prisma.drug.deleteMany();
+  await prisma.doctor.deleteMany();
+  await prisma.supplier.deleteMany();
+  await prisma.coupon.deleteMany();
+
   // --- Users ---------------------------------------------------------------
   const [admin, pharmacist, clerk] = await Promise.all([
     prisma.user.upsert({
